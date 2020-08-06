@@ -84,22 +84,23 @@ expressionVisitor node context =
                                             Nothing
                                 )
                                 exprs
+
+                        actualTemplateRange =
+                            { start =
+                                Location
+                                    templateRange.start.row
+                                    (templateRange.start.column + 1)
+                            , end =
+                                Location
+                                    templateRange.end.row
+                                    (templateRange.end.column - 9)
+                            }
                     in
                     if mn == moduleName && n == name && List.length exprs == List.length keys then
-                        ( checkForErrors (Node templateRange template) keys, context )
+                        ( checkForErrors (Node actualTemplateRange template) keys, context )
 
                     else
                         ( [], context )
-
-                Expression.FunctionOrValue [] "log" ->
-                    ( [ Rule.error
-                            { message = "Remove the use of `Debug` before shipping to production"
-                            , details = [ "The `Debug` module is useful when developing, but is not meant to be shipped to production or published in a package. I suggest removing its use before committing and attempting to push to production." ]
-                            }
-                            (Node.range node)
-                      ]
-                    , context
-                    )
 
                 _ ->
                     ( [], context )
@@ -109,6 +110,10 @@ checkForErrors : Node String -> List (Node String) -> List (Error {})
 checkForErrors (Node templateRange template) keyNodes =
     case keyNodesToDict keyNodes of
         Ok dict ->
+            let
+                _ =
+                    Debug.log "dict" keyNodes
+            in
             case Parser.run (Parser.loop (Normal []) parser) template of
                 Err deadEnds ->
                     [ failedToParseTemplateError deadEnds ]
@@ -118,6 +123,12 @@ checkForErrors (Node templateRange template) keyNodes =
                         ( errors, unusedKeys ) =
                             List.foldl
                                 (\placeholder ( errs, uk ) ->
+                                    let
+                                        range =
+                                            offsetRange
+                                                templateRange
+                                                placeholder.range
+                                    in
                                     case Dict.get placeholder.name dict of
                                         Just _ ->
                                             ( errs
@@ -125,7 +136,7 @@ checkForErrors (Node templateRange template) keyNodes =
                                             )
 
                                         Nothing ->
-                                            ( placeholderWithoutValueError placeholder.range :: errs
+                                            ( placeholderWithoutValueError range :: errs
                                             , uk
                                             )
                                 )
@@ -157,7 +168,7 @@ keyNodesToDict keyNodes =
                             ( errs, Dict.insert key range d )
                 )
                 ( [], Dict.empty )
-                keyNodes
+                (List.reverse keyNodes)
     in
     if List.length errors == 0 then
         Ok dict
@@ -168,7 +179,7 @@ keyNodesToDict keyNodes =
 
 type State
     = Normal Placeholders
-    | InPlaceholder Location String Int Placeholders
+    | InPlaceholder Placeholders
 
 
 type alias Placeholders =
@@ -177,57 +188,74 @@ type alias Placeholders =
 
 parser : State -> Parser (Step State Placeholders)
 parser state =
-    case Debug.log "state: " state of
+    case state of
         Normal placeholders ->
-            Parser.succeed
-                (\row col ->
-                    Loop (InPlaceholder (Location row col) "" 0 placeholders)
-                )
-                |. Parser.chompUntil "${"
-                |. Parser.token "${"
-                |. Parser.chompWhile ((/=) ' ')
-                |= Parser.getRow
-                |= Parser.getCol
-
-        InPlaceholder start name trailingSpaces placeholders ->
             Parser.oneOf
-                [ Parser.succeed
-                    (\row col ->
-                        let
-                            range =
-                                { start = start
-                                , end = Location row col
-                                }
-
-                            newPlaceholders =
-                                { range = range, name = name } :: placeholders
-                        in
-                        Loop (Normal newPlaceholders)
-                    )
-                    |. Parser.token "}"
-                    |= Parser.getRow
-                    |= Parser.getCol
-                , Parser.succeed
-                    (\o1 o2 c1 c2 s ->
-                        let
-                            newName =
-                                name
-                                    ++ String.repeat trailingSpaces " "
-                                    ++ String.slice o1 o2 s
-                        in
-                        Loop (InPlaceholder start newName (c2 - c1) placeholders)
-                    )
-                    |= Parser.getOffset
-                    |. Parser.chompWhile ((/=) ' ')
-                    |= Parser.getOffset
-                    |= Parser.getCol
-                    |. Parser.chompWhile ((==) ' ')
-                    |= Parser.getCol
-                    |= Parser.getSource
+                [ Parser.chompUntil "${"
+                    |> Parser.map (\_ -> Loop (InPlaceholder placeholders))
+                , Parser.succeed (Done placeholders)
                 ]
 
+        InPlaceholder placeholders ->
+            Parser.succeed
+                (\r1 c1 o1 r2 c2 o2 s ->
+                    let
+                        range =
+                            { start = Location r1 c1
+                            , end = Location r2 c2
+                            }
+
+                        name =
+                            String.slice o1 (o2 + 1) s
+                                |> placeholderNameFromPlaceholder
+                    in
+                    Loop (Normal ({ range = range, name = name } :: placeholders))
+                )
+                |= Parser.getRow
+                |= Parser.getCol
+                |= Parser.getOffset
+                |. Parser.chompUntil "}"
+                |= Parser.getRow
+                |= Parser.getCol
+                |= Parser.getOffset
+                |= Parser.getSource
 
 
+
+-- Parser.oneOf
+--     [ Parser.succeed
+--         (\row col ->
+--             let
+--                 range =
+--                     { start = start
+--                     , end = Location row col
+--                     }
+--                 newPlaceholders =
+--                     { range = range, name = name } :: placeholders
+--             in
+--             Loop (Normal newPlaceholders)
+--         )
+--         |. Parser.token "}"
+--         |= Parser.getRow
+--         |= Parser.getCol
+--     , Parser.succeed
+--         (\o1 o2 c1 c2 s ->
+--             let
+--                 newName =
+--                     name
+--                         ++ String.repeat trailingSpaces " "
+--                         ++ String.slice o1 o2 s
+--             in
+--             Loop (InPlaceholder start newName (c2 - c1) placeholders)
+--         )
+--         |= Parser.getOffset
+--         |. Parser.chompWhile ((/=) ' ')
+--         |= Parser.getOffset
+--         |= Parser.getCol
+--         |. Parser.chompWhile ((==) ' ')
+--         |= Parser.getCol
+--         |= Parser.getSource
+--     ]
 -- Errors
 
 
@@ -272,3 +300,77 @@ placeholderWithoutValueError =
         { message = "Placeholder has no value"
         , details = [ "This placeholder has no value associated, i.e. there's no key with the same name as the placeholder. Maybe you meant to asign it a value but misspelled the key or placeholder name?" ]
         }
+
+
+
+-- helpers
+
+
+offsetRange : Range -> Range -> Range
+offsetRange r1 r2 =
+    let
+        start =
+            if r2.start.row == 1 then
+                Location
+                    r1.start.row
+                    (r1.start.column + r2.start.column - 1)
+
+            else
+                Location
+                    (r1.start.row + r2.start.row - 1)
+                    r2.start.column
+
+        end =
+            if r2.end.row == 1 then
+                Location
+                    r1.end.row
+                    (r1.end.column + r2.end.column - 1)
+
+            else
+                Location
+                    (r1.end.row + r2.end.row - 1)
+                    r2.end.column
+    in
+    Range start end
+
+
+placeholderNameFromPlaceholder : String -> String
+placeholderNameFromPlaceholder placeholder =
+    placeholder
+        |> String.dropLeft 2
+        |> String.dropRight 1
+        |> String.toList
+        |> dropWhile ((==) ' ')
+        |> dropWhileRight ((==) ' ')
+        |> String.fromList
+
+
+
+-- dropwWhile and dropWhileRight taken from elm-community/list-extra
+
+
+dropWhile : (a -> Bool) -> List a -> List a
+dropWhile predicate list =
+    case list of
+        [] ->
+            []
+
+        x :: xs ->
+            if predicate x then
+                dropWhile predicate xs
+
+            else
+                list
+
+
+dropWhileRight : (a -> Bool) -> List a -> List a
+dropWhileRight p =
+    List.foldr
+        (\x xs ->
+            if p x && List.isEmpty xs then
+                []
+
+            else
+                x :: xs
+        )
+        []
