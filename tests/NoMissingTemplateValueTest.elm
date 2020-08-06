@@ -42,14 +42,14 @@ spacesInNamesIsNotIgnored =
         [ passes "${foo}" [ ( "foo", "bar" ) ]
         , fails "${f oo}"
             [ ( "foo", "bar" ) ]
-            [ placeholderNotInterpolated "${f oo}"
-            , keyWithoutPlaceholder "foo"
+            [ placeholderWithoutValueError "${f oo}"
+            , unusedKeyError "foo"
             ]
         , passes "${f oo}" [ ( "f oo", "bar" ) ]
         , fails "${f oo}"
             [ ( "foo", "bar" ) ]
-            [ placeholderNotInterpolated "${foo}"
-            , keyWithoutPlaceholder "foo"
+            [ placeholderWithoutValueError "${foo}"
+            , unusedKeyError "foo"
             ]
         ]
 
@@ -61,10 +61,10 @@ multiplePlaceholdersAndValues =
         , passes "${x} ${y} ${x}" [ ( "x", "foo" ), ( "y", "bar" ) ]
         , fails "${x} ${y}"
             [ ( "x", "foo" ) ]
-            [ placeholderNotInterpolated "y" ]
+            [ placeholderWithoutValueError "y" ]
         , fails "${x}"
             [ ( "x", "foo" ), ( "y", "bar" ) ]
-            [ keyWithoutPlaceholder "y" ]
+            [ unusedKeyError "y" ]
         ]
 
 
@@ -134,25 +134,28 @@ bar = String.Template.inject """ ++ toInjectStr ++ " <| \"\"\"" ++ template ++ "
         ]
 
 
-placeholderNotInterpolated : String -> ExpectedError
-placeholderNotInterpolated under =
+duplicateKeysError : String -> ExpectedError
+duplicateKeysError under =
     Review.Test.error
-        { message = "Placeholder has no matching value"
-        , details =
-            [ "This would result in the placeholder appearing in the final string."
-            , "Make sure that there's a value for this placeholder and that the key matches the placeholder name. Remember that leading and trailing space in the name is ignored!"
-            ]
+        { message = "Duplicate keys."
+        , details = [ "You already have a key with the same name. Rename this key to something eles" ]
         , under = under
         }
 
 
-keyWithoutPlaceholder : String -> ExpectedError
-keyWithoutPlaceholder under =
+unusedKeyError : String -> ExpectedError
+unusedKeyError under =
     Review.Test.error
-        { message = "Value has no matching placeholder"
-        , details =
-            [ "Every value should be inserted somewhere, but this value is not."
-            , "Make sure that there's a placeholder for this value and that the key matches the placeholder name. Remember that leading and trailing space in the name is ignored!"
-            ]
+        { message = "Unused key."
+        , details = [ "This keys is not being used anywhere in the template, maybe you meant to use it but misspelled the key or placeholder name?" ]
+        , under = under
+        }
+
+
+placeholderWithoutValueError : String -> ExpectedError
+placeholderWithoutValueError under =
+    Review.Test.error
+        { message = "Placeholder has no value"
+        , details = [ "This placeholder has no value associated, i.e. there's no key with the same name as the placeholder. Maybe you meant to asign it a value but misspelled the key or placeholder name?" ]
         , under = under
         }
