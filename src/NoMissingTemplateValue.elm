@@ -110,7 +110,7 @@ checkForErrors : Node String -> List (Node String) -> List (Error {})
 checkForErrors (Node templateRange template) keyNodes =
     case keyNodesToDict keyNodes of
         Ok dict ->
-            case Parser.run (Parser.loop (Normal []) parser) template of
+            case Parser.run (Parser.loop (Normal []) (parser templateRange)) template of
                 Err deadEnds ->
                     [ failedToParseTemplateError deadEnds ]
 
@@ -119,12 +119,6 @@ checkForErrors (Node templateRange template) keyNodes =
                         ( errors, unusedKeys ) =
                             List.foldl
                                 (\placeholder ( errs, uk ) ->
-                                    let
-                                        range =
-                                            offsetRange
-                                                templateRange
-                                                placeholder.range
-                                    in
                                     case Dict.get placeholder.name dict of
                                         Just _ ->
                                             ( errs
@@ -132,7 +126,9 @@ checkForErrors (Node templateRange template) keyNodes =
                                             )
 
                                         Nothing ->
-                                            ( placeholderWithoutValueError range :: errs
+                                            ( placeholderWithoutValueError
+                                                placeholder.range
+                                                :: errs
                                             , uk
                                             )
                                 )
@@ -182,8 +178,8 @@ type alias Placeholders =
     List { range : Range, name : String }
 
 
-parser : State -> Parser (Step State Placeholders)
-parser state =
+parser : Range -> State -> Parser (Step State Placeholders)
+parser templateRange state =
     case state of
         Normal placeholders ->
             Parser.oneOf
@@ -197,8 +193,14 @@ parser state =
                 (\r1 c1 o1 r2 c2 o2 s ->
                     let
                         range =
-                            { start = Location r1 c1
-                            , end = Location r2 c2
+                            { start =
+                                Location
+                                    (r1 + templateRange.start.row - 1)
+                                    (c1 + templateRange.start.column)
+                            , end =
+                                Location
+                                    (r2 + templateRange.start.row - 1)
+                                    (c2 + templateRange.start.column)
                             }
 
                         name =
@@ -262,34 +264,6 @@ placeholderWithoutValueError =
 
 
 -- helpers
-
-
-offsetRange : Range -> Range -> Range
-offsetRange r1 r2 =
-    let
-        start =
-            if r2.start.row == 1 then
-                Location
-                    r1.start.row
-                    (r1.start.column + r2.start.column)
-
-            else
-                Location
-                    (r1.start.row + r2.start.row - 1)
-                    r2.start.column
-
-        end =
-            if r2.end.row == 1 then
-                Location
-                    r1.end.row
-                    (r1.start.column + r2.end.column)
-
-            else
-                Location
-                    (r1.end.row + r2.end.row - 1)
-                    r2.end.column
-    in
-    Range start end
 
 
 placeholderNameFromPlaceholder : String -> String
