@@ -72,24 +72,27 @@ multiplePlaceholdersAndValues =
 
 reportsErrors : Test
 reportsErrors =
-    Test.only <|
-        describe "Reports errors"
-            [ describe "Placeholders without values"
-                [ fails "${x}" [] [ placeholderWithoutValueError "${x}" ]
-                ]
-            , describe "Unused keys"
-                [ fails "foo" [ ( "x", "y" ) ] [ unusedKeyError "\"x\"" ]
-                ]
-            , describe "Duplicate keys"
-                [ fails "${x}"
-                    [ ( "x", "y" ), ( "x", "z" ) ]
-                    [ duplicateKeysError "\"x\""
-                        { start = Location 3 48
-                        , end = Location 3 51
-                        }
-                    ]
+    describe "Reports errors"
+        [ describe "Placeholders without values"
+            [ fails "${x}" [] [ placeholderWithoutValueError "${x}" ]
+            ]
+        , describe "Unused keys"
+            [ fails "foo" [ ( "x", "y" ) ] [ unusedKeyError "\"x\"" ]
+            ]
+        , describe "Duplicate keys"
+            [ fails "${x}"
+                [ ( "x", "y" ), ( "x", "z" ), ( "x", "w" ) ]
+                [ duplicateKeysError "\"x\""
+                    { start = Location 3 48
+                    , end = Location 3 51
+                    }
+                , duplicateKeysError "\"x\""
+                    { start = Location 3 62
+                    , end = Location 3 65
+                    }
                 ]
             ]
+        ]
 
 
 passes : String -> List ( String, String ) -> Test
