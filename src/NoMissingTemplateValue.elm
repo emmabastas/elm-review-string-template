@@ -97,7 +97,7 @@ expressionVisitor node context =
                             }
                     in
                     if mn == moduleName && n == name && List.length exprs == List.length keys then
-                        ( checkForErrors (Node actualTemplateRange template) keys, context )
+                        ( checkForErrors (Node templateRange template) keys, context )
 
                     else
                         ( [], context )
@@ -110,10 +110,6 @@ checkForErrors : Node String -> List (Node String) -> List (Error {})
 checkForErrors (Node templateRange template) keyNodes =
     case keyNodesToDict keyNodes of
         Ok dict ->
-            let
-                _ =
-                    Debug.log "dict" keyNodes
-            in
             case Parser.run (Parser.loop (Normal []) parser) template of
                 Err deadEnds ->
                     [ failedToParseTemplateError deadEnds ]
@@ -161,14 +157,14 @@ keyNodesToDict keyNodes =
             List.foldl
                 (\(Node range key) ( errs, d ) ->
                     case Dict.get key d of
-                        Just anotherRange ->
-                            ( duplicateKeysError anotherRange :: errs, d )
+                        Just _ ->
+                            ( duplicateKeysError range :: errs, d )
 
                         Nothing ->
                             ( errs, Dict.insert key range d )
                 )
                 ( [], Dict.empty )
-                (List.reverse keyNodes)
+                keyNodes
     in
     if List.length errors == 0 then
         Ok dict
@@ -219,44 +215,6 @@ parser state =
                 |= Parser.getCol
                 |= Parser.getOffset
                 |= Parser.getSource
-
-
-
--- Parser.oneOf
---     [ Parser.succeed
---         (\row col ->
---             let
---                 range =
---                     { start = start
---                     , end = Location row col
---                     }
---                 newPlaceholders =
---                     { range = range, name = name } :: placeholders
---             in
---             Loop (Normal newPlaceholders)
---         )
---         |. Parser.token "}"
---         |= Parser.getRow
---         |= Parser.getCol
---     , Parser.succeed
---         (\o1 o2 c1 c2 s ->
---             let
---                 newName =
---                     name
---                         ++ String.repeat trailingSpaces " "
---                         ++ String.slice o1 o2 s
---             in
---             Loop (InPlaceholder start newName (c2 - c1) placeholders)
---         )
---         |= Parser.getOffset
---         |. Parser.chompWhile ((/=) ' ')
---         |= Parser.getOffset
---         |= Parser.getCol
---         |. Parser.chompWhile ((==) ' ')
---         |= Parser.getCol
---         |= Parser.getSource
---     ]
--- Errors
 
 
 failedToParseTemplateError : List Parser.DeadEnd -> Error {}
@@ -313,7 +271,7 @@ offsetRange r1 r2 =
             if r2.start.row == 1 then
                 Location
                     r1.start.row
-                    (r1.start.column + r2.start.column - 1)
+                    (r1.start.column + r2.start.column)
 
             else
                 Location
@@ -324,7 +282,7 @@ offsetRange r1 r2 =
             if r2.end.row == 1 then
                 Location
                     r1.end.row
-                    (r1.end.column + r2.end.column - 1)
+                    (r1.start.column + r2.end.column)
 
             else
                 Location
