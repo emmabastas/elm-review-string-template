@@ -149,13 +149,20 @@ veryifyTemplate dict template =
                 ( [], dict )
                 (placeholdersInTemplate (Node.value template))
 
+        multilineString =
+            (Node.range template).start.row /= (Node.range template).end.row
+
         templateCursorPosition : Array ( Int, Int )
         templateCursorPosition =
             List.foldl
                 (\char ( ( c, r ), xs ) ->
                     case char of
                         '\n' ->
-                            ( ( 1, r + 1 ), ( 1, r + 1 ) :: xs )
+                            if multilineString then
+                                ( ( 1, r + 1 ), ( 1, r + 1 ) :: xs )
+
+                            else
+                                ( ( c + 2, r ), ( c + 2, r ) :: xs )
 
                         _ ->
                             ( ( c + 1, r ), ( c + 1, r ) :: xs )
