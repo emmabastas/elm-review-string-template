@@ -254,20 +254,35 @@ stringRangeInLiteral (Node range string) =
                 String.length string
 
             delta =
-                literalLength - stringLength
+                (literalLength - stringLength) // 2
         in
         { start =
             { row = range.start.row
-            , column = range.start.column + (delta // 2)
+            , column = range.start.column + delta
             }
         , end =
             { row = range.end.row
-            , column = range.end.column - (delta // 2)
+            , column = range.end.column - delta
             }
         }
 
     else
-        Debug.todo "Handle multiline strings"
+        let
+            stringRange =
+                rangeFromString string
+
+            delta =
+                range.end.column - stringRange.end.column
+        in
+        { start =
+            { row = range.start.row
+            , column = range.start.column + delta
+            }
+        , end =
+            { row = range.end.row
+            , column = range.end.column - delta
+            }
+        }
 
 
 rangeFromString : String -> Range
