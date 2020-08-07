@@ -21,8 +21,7 @@ all =
 identifiesPlaceholderSyntax : Test
 identifiesPlaceholderSyntax =
     describe "Identifies placeholder syntax"
-        [ passes "" []
-        , passes "foo" []
+        [ passes "foo" []
         , passes "${}" [ ( "", "" ) ]
         , passes "${${}" [ ( "${", "" ) ]
         ]
@@ -45,13 +44,13 @@ spacesInNamesIsNotIgnored =
         , fails "${f oo}"
             [ ( "foo", "bar" ) ]
             [ placeholderWithoutValueError "${f oo}"
-            , unusedKeyError "foo"
+            , unusedKeyError "\"foo\""
             ]
-        , passes "${f oo}" [ ( "f oo", "bar" ) ]
-        , fails "${f oo}"
-            [ ( "foo", "bar" ) ]
-            [ placeholderWithoutValueError "${foo}"
-            , unusedKeyError "foo"
+        , passes "${b ar}" [ ( "b ar", "bar" ) ]
+        , fails "${b az}"
+            [ ( "baz", "foo" ) ]
+            [ placeholderWithoutValueError "${b az}"
+            , unusedKeyError "\"baz\""
             ]
         ]
 
@@ -63,10 +62,10 @@ multiplePlaceholdersAndValues =
         , passes "${x} ${y} ${x}" [ ( "x", "foo" ), ( "y", "bar" ) ]
         , fails "${x} ${y}"
             [ ( "x", "foo" ) ]
-            [ placeholderWithoutValueError "y" ]
+            [ placeholderWithoutValueError "${y}" ]
         , fails "${x}"
             [ ( "x", "foo" ), ( "y", "bar" ) ]
-            [ unusedKeyError "y" ]
+            [ unusedKeyError "\"y\"" ]
         ]
 
 
@@ -75,6 +74,17 @@ reportsErrors =
     describe "Reports errors"
         [ describe "Placeholders without values"
             [ fails "${x}" [] [ placeholderWithoutValueError "${x}" ]
+            , fails "${x}${y}${z}"
+                []
+                [ placeholderWithoutValueError "${x}"
+                , placeholderWithoutValueError "${y}"
+                , placeholderWithoutValueError "${z}"
+                ]
+            , fails "${x}\n${y}"
+                []
+                [ placeholderWithoutValueError "${x}"
+                , placeholderWithoutValueError "${y}"
+                ]
             ]
         , describe "Unused keys"
             [ fails "foo" [ ( "x", "y" ) ] [ unusedKeyError "\"x\"" ]
@@ -128,6 +138,13 @@ unitTest desc template toInject expect =
                 ("""module Foo exposing (bar)
 import String.Template
 bar = String.Template.inject """ ++ toInjectStr ++ "\"\"\"" ++ template ++ "\"\"\"")
+                    |> Review.Test.run rule
+                    |> expect
+        , test "Normal application with single quote template" <|
+            \_ ->
+                ("""module Foo exposing (bar)
+import String.Template
+bar = String.Template.inject """ ++ toInjectStr ++ "\"" ++ template ++ "\"")
                     |> Review.Test.run rule
                     |> expect
 
