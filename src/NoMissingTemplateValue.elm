@@ -3,7 +3,7 @@ module NoMissingTemplateValue exposing (rule)
 import Array exposing (Array)
 import Dict exposing (Dict)
 import Elm.Syntax.Exposing as Exposing
-import Elm.Syntax.Expression as Expression exposing (Expression)
+import Elm.Syntax.Expression as Expression exposing (Expression(..))
 import Elm.Syntax.Import exposing (Import)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Range exposing (Location, Range)
@@ -12,49 +12,91 @@ import Review.Rule as Rule exposing (Error, Rule)
 
 
 type alias Context =
-    { injectName : Maybe ( List String, String )
+    { injectQualified : Maybe ( List String, String )
+    , injectUnqualified : Bool
     }
 
 
 rule : Rule
 rule =
-    Rule.newModuleRuleSchema "NoMissingTemplateValue" { injectName = Nothing }
+    Rule.newModuleRuleSchema "NoMissingTemplateValue"
+        { injectQualified = Nothing
+        , injectUnqualified = False
+        }
         |> Rule.withImportVisitor importVisitor
         |> Rule.withExpressionEnterVisitor expressionVisitor
         |> Rule.fromModuleRuleSchema
 
 
 importVisitor : Node Import -> Context -> ( List (Error {}), Context )
-importVisitor node context =
-    let
-        moduleName : List String
-        moduleName =
-            Node.value (Node.value node).moduleName
-
-        exposingList : Maybe Exposing.Exposing
-        exposingList =
-            Maybe.map Node.value (Node.value node).exposingList
-    in
-    case ( moduleName, exposingList ) of
-        ( [ "String", "Template" ], Nothing ) ->
-            ( [], { injectName = Just ( [ "String", "Template" ], "inject" ) } )
-
-        ( [ "String", "Template" ], Just (Exposing.All _) ) ->
-            ( [], { injectName = Just ( [], "inject" ) } )
-
-        ( [ "String", "Template" ], Just (Exposing.Explicit exposedFunctions) ) ->
+importVisitor (Node _ import_) context =
+    case import_.moduleName of
+        Node _ [ "String", "Template" ] ->
             let
-                isInjectFunction : Node Exposing.TopLevelExpose -> Bool
-                isInjectFunction exposeNode =
-                    case Node.value exposeNode of
-                        Exposing.FunctionExpose "inject" ->
+                injectQualified =
+                    case import_.moduleAlias of
+                        Nothing ->
+                            Just ( [ "String", "Template" ], "inject" )
+
+                        Just (Node _ qualifier) ->
+                            Just ( qualifier, "inject" )
+
+                injectUnqualified =
+                    case import_.exposingList of
+                        Nothing ->
+                            False
+
+                        Just (Node _ (Exposing.All _)) ->
                             True
 
-                        _ ->
-                            False
+                        Just (Node _ (Exposing.Explicit exposings)) ->
+                            List.any
+                                (\(Node _ exp) ->
+                                    case exp of
+                                        Exposing.FunctionExpose "inject" ->
+                                            True
+
+                                        _ ->
+                                            False
+                                )
+                                exposings
             in
-            if List.any isInjectFunction exposedFunctions then
-                ( [], { injectName = Just ( [], "inject" ) } )
+            ( []
+            , { injectQualified = injectQualified
+              , injectUnqualified = injectUnqualified
+              }
+            )
+
+        _ ->
+            ( [], context )
+
+
+expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
+expressionVisitor (Node _ expr) context =
+    case extractTemplateInjectApplication context expr of
+        Just ( Node _ (ListExpr keyExprs), Node literalRange (Literal template) ) ->
+            let
+                keys : List (Node String)
+                keys =
+                    List.filterMap
+                        (\keyExpr ->
+                            case Node.value keyExpr of
+                                Expression.TupledExpression [ Node range (Expression.Literal key), _ ] ->
+                                    Just (Node range key)
+
+                                _ ->
+                                    Nothing
+                        )
+                        keyExprs
+
+                templateRange : Range
+                templateRange =
+                    stringRangeInLiteral (Node literalRange template)
+            in
+            if List.length keyExprs == List.length keys then
+                ( checkForErrors (Node templateRange template) keys
+                , context
+                )
 
             else
                 ( [], context )
@@ -63,50 +105,50 @@ importVisitor node context =
             ( [], context )
 
 
-expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
-expressionVisitor node context =
-    case context.injectName of
-        Nothing ->
-            ( [], context )
+extractTemplateInjectApplication : Context -> Expression -> Maybe ( Node Expression, Node Expression )
+extractTemplateInjectApplication context expr =
+    case ( context.injectQualified, context.injectUnqualified ) of
+        ( Nothing, False ) ->
+            Nothing
 
-        Just ( moduleName, name ) ->
-            case Node.value node of
-                Expression.Application [ Node _ (Expression.FunctionOrValue mn n), Node _ (Expression.ListExpr exprs), Node literalRange (Expression.Literal template) ] ->
-                    let
-                        keys : List (Node String)
-                        keys =
-                            List.filterMap
-                                (\expr ->
-                                    case Node.value expr of
-                                        Expression.TupledExpression [ Node range (Expression.Literal key), _ ] ->
-                                            Just (Node range key)
-
-                                        _ ->
-                                            Nothing
-                                )
-                                exprs
-
-                        templateRange : Range
-                        templateRange =
-                            stringRangeInLiteral (Node literalRange template)
-                    in
-                    if
-                        mn
-                            == moduleName
-                            && n
-                            == name
-                            && List.length exprs
-                            == List.length keys
-                    then
-                        ( checkForErrors (Node templateRange template) keys
-                        , context
-                        )
+        _ ->
+            case expr of
+                Application [ Node _ (FunctionOrValue mn n), e1, e2 ] ->
+                    if isStringTemplateInject context mn n then
+                        Just ( e1, e2 )
 
                     else
-                        ( [], context )
+                        Nothing
+
+                OperatorApplication "|>" _ e1 (Node _ (Application [ Node _ (FunctionOrValue mn n), e2 ])) ->
+                    if isStringTemplateInject context mn n then
+                        Just ( e2, e1 )
+
+                    else
+                        Nothing
+
+                OperatorApplication "<|" _ (Node _ (Application [ Node _ (FunctionOrValue mn n), e1 ])) e2 ->
+                    if isStringTemplateInject context mn n then
+                        Just ( e1, e2 )
+
+                    else
+                        Nothing
 
                 _ ->
-                    ( [], context )
+                    Nothing
+
+
+isStringTemplateInject : Context -> List String -> String -> Bool
+isStringTemplateInject { injectQualified, injectUnqualified } moduleName name =
+    [ case injectQualified of
+        Nothing ->
+            False
+
+        Just ( mn, n ) ->
+            mn == moduleName && n == name
+    , injectUnqualified && moduleName == [] && name == "inject"
+    ]
+        |> List.any identity
 
 
 checkForErrors : Node String -> List (Node String) -> List (Error {})

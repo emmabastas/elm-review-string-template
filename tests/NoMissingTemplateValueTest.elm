@@ -89,19 +89,20 @@ reportsErrors =
         , describe "Unused keys"
             [ fails "foo" [ ( "x", "y" ) ] [ unusedKeyError "\"x\"" ]
             ]
-        , describe "Duplicate keys"
-            [ fails "${x}"
-                [ ( "x", "y" ), ( "x", "z" ), ( "x", "w" ) ]
-                [ duplicateKeysError "\"x\""
-                    { start = Location 3 48
-                    , end = Location 3 51
-                    }
-                , duplicateKeysError "\"x\""
-                    { start = Location 3 62
-                    , end = Location 3 65
-                    }
-                ]
-            ]
+
+        -- , describe "Duplicate keys"
+        --     [ fails "${x}"
+        --         [ ( "x", "y" ), ( "x", "z" ), ( "x", "w" ) ]
+        --         [ duplicateKeysError "\"x\""
+        --             { start = Location 3 48
+        --             , end = Location 3 51
+        --             }
+        --         , duplicateKeysError "\"x\""
+        --             { start = Location 3 62
+        --             , end = Location 3 65
+        --             }
+        --         ]
+        --     ]
         ]
 
 
@@ -152,35 +153,41 @@ bar = String.Template.inject """
                 )
                     |> Review.Test.run rule
                     |> expect
-
-        --        , test "Normal application with `exposing` import" <|
-        --            \_ ->
-        --                ("""module Foo exposing (bar)
-        --import String.Template exposing (inject)
-        --bar = inject \"\"\"""" ++ template ++ "\"\"\"  " ++ toInjectStr)
-        --                    |> Review.Test.run rule
-        --                    |> expect
-        --        , test "Normal application with `as` import" <|
-        --            \_ ->
-        --                ("""module Foo exposing (bar)
-        --import String.Template as T
-        --bar = T.inject \"\"\"""" ++ template ++ "\"\"\"  " ++ toInjectStr)
-        --                    |> Review.Test.run rule
-        --                    |> expect
-        --        , test "Right pipe appilcation" <|
-        --            \_ ->
-        --                ("""module Foo exposing (bar)
-        --import String.Template
-        --bar = \"\"\"""" ++ template ++ "\"\"\" |> String.Template.inject " ++ toInjectStr)
-        --                    |> Review.Test.run rule
-        --                    |> expect
-        --        , test "Left pipe application" <|
-        --            \_ ->
-        --                ("""module Foo exposing (bar)
-        --import String.Template
-        --bar = String.Template.inject """ ++ toInjectStr ++ " <| \"\"\"" ++ template ++ "\"\"\"")
-        --                    |> Review.Test.run rule
-        --                    |> expect
+        , test "Normal application with `exposing(inject)` import" <|
+            \_ ->
+                ("""module Foo exposing (bar)
+import String.Template exposing (inject)
+bar = inject """ ++ toInjectStr ++ "\"\"\"" ++ template ++ "\"\"\"")
+                    |> Review.Test.run rule
+                    |> expect
+        , test "Normal application with `exposing(..)` import" <|
+            \_ ->
+                ("""module Foo exposing (bar)
+import String.Template exposing (..)
+bar = inject """ ++ toInjectStr ++ "\"\"\"" ++ template ++ "\"\"\"")
+                    |> Review.Test.run rule
+                    |> expect
+        , test "Normal application with `as` import" <|
+            \_ ->
+                ("""module Foo exposing (bar)
+import String.Template as T
+bar = T.inject """ ++ toInjectStr ++ "\"\"\"" ++ template ++ "\"\"\"")
+                    |> Review.Test.run rule
+                    |> expect
+        , test "Right pipe appilcation" <|
+            \_ ->
+                ("""module Foo exposing (bar)
+import String.Template
+bar = \"\"\"""" ++ template ++ "\"\"\" |> String.Template.inject " ++ toInjectStr)
+                    |> Review.Test.run rule
+                    |> expect
+        , test "Left pipe application" <|
+            \_ ->
+                ("""module Foo exposing (bar)
+import String.Template
+bar = String.Template.inject """ ++ toInjectStr ++ " <| \"\"\"" ++ template ++ "\"\"\"")
+                    |> Review.Test.run rule
+                    |> expect
         ]
 
 
