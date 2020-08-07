@@ -184,24 +184,14 @@ veryifyTemplate dict template =
                             Array.get (endIndex - 1) templateCursorPosition
                                 |> Maybe.withDefault ( 0, 0 )
 
-                        start =
-                            if sr == 1 then
-                                Location or (oc + sc - 1)
-
-                            else
-                                Location (or + sr - 1) (sc - 1)
-
-                        end =
-                            if er == 1 then
-                                Location or (oc + ec)
-
-                            else
-                                Location (or + er - 1) ec
+                        range =
+                            offsetRange
+                                (Node.range template).start
+                                { start = Location sr sc
+                                , end = Location er ec
+                                }
                     in
-                    placeholderWithoutValueError
-                        { start = start
-                        , end = end
-                        }
+                    placeholderWithoutValueError range
                 )
                 placeholdersWithoutValue
 
@@ -310,13 +300,18 @@ offsetRange : Location -> Range -> Range
 offsetRange { row, column } { start, end } =
     { start =
         { row = row + start.row - 1
-        , column = column + start.column - 1
+        , column =
+            if start.row == 1 then
+                column + start.column - 1
+
+            else
+                start.column - 1
         }
     , end =
         { row = row + end.row - 1
         , column =
             if end.row == 1 then
-                column + end.column - 1
+                column + end.column
 
             else
                 end.column
