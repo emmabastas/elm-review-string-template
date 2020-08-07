@@ -1,12 +1,13 @@
 module NoMissingTemplateValue exposing (rule)
 
+import Array exposing (Array)
 import Dict exposing (Dict)
 import Elm.Syntax.Exposing as Exposing
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Import exposing (Import)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Range exposing (Location, Range)
-import Parser exposing ((|.), (|=), Parser, Step(..))
+import Regex exposing (Regex)
 import Review.Rule as Rule exposing (Error, Rule)
 
 
@@ -84,17 +85,6 @@ expressionVisitor node context =
                                             Nothing
                                 )
                                 exprs
-
-                        actualTemplateRange =
-                            { start =
-                                Location
-                                    templateRange.start.row
-                                    (templateRange.start.column + 1)
-                            , end =
-                                Location
-                                    templateRange.end.row
-                                    (templateRange.end.column - 9)
-                            }
                     in
                     if mn == moduleName && n == name && List.length exprs == List.length keys then
                         ( checkForErrors (Node templateRange template) keys, context )
@@ -107,135 +97,141 @@ expressionVisitor node context =
 
 
 checkForErrors : Node String -> List (Node String) -> List (Error {})
-checkForErrors (Node templateRange template) keyNodes =
-    case keyNodesToDict keyNodes of
-        Ok dict ->
-            case Parser.run (Parser.loop (Normal []) (parser templateRange)) template of
-                Err deadEnds ->
-                    [ failedToParseTemplateError deadEnds ]
-
-                Ok placeholders ->
-                    let
-                        ( errors, unusedKeys ) =
-                            List.foldl
-                                (\placeholder ( errs, uk ) ->
-                                    case Dict.get placeholder.name dict of
-                                        Just _ ->
-                                            ( errs
-                                            , Dict.remove placeholder.name uk
-                                            )
-
-                                        Nothing ->
-                                            ( placeholderWithoutValueError
-                                                placeholder.range
-                                                :: errs
-                                            , uk
-                                            )
-                                )
-                                ( [], dict )
-                                placeholders
-
-                        unusedKeyErrors =
-                            unusedKeys
-                                |> Dict.toList
-                                |> List.map (\( _, range ) -> unusedKeyError range)
-                    in
-                    errors ++ unusedKeyErrors
-
-        Err errors ->
-            errors
-
-
-keyNodesToDict : List (Node String) -> Result (List (Error {})) (Dict String Range)
-keyNodesToDict keyNodes =
+checkForErrors template keyNodes =
     let
         ( errors, dict ) =
+            keyNodesToDict keyNodes
+    in
+    veryifyTemplate dict template ++ errors
+
+
+keyNodesToDict : List (Node String) -> ( List (Error {}), Dict String Range )
+keyNodesToDict keyNodes =
+    List.foldl
+        (\(Node range key) ( errs, d ) ->
+            case Dict.get key d of
+                Just _ ->
+                    ( duplicateKeysError range :: errs, d )
+
+                Nothing ->
+                    ( errs, Dict.insert key range d )
+        )
+        ( [], Dict.empty )
+        keyNodes
+
+
+veryifyTemplate : Dict String Range -> Node String -> List (Error {})
+veryifyTemplate dict template =
+    let
+        ( placeholdersWithoutValue, unusedKeys ) =
             List.foldl
-                (\(Node range key) ( errs, d ) ->
-                    case Dict.get key d of
+                (\placeholder ( ps, uk ) ->
+                    case Dict.get placeholder.name dict of
                         Just _ ->
-                            ( duplicateKeysError range :: errs, d )
+                            ( ps, Dict.remove placeholder.name uk )
 
                         Nothing ->
-                            ( errs, Dict.insert key range d )
+                            ( placeholder :: ps, uk )
                 )
-                ( [], Dict.empty )
-                keyNodes
+                ( [], dict )
+                (placeholdersInTemplate (Node.value template))
+
+        templateCursorPosition : Array ( Int, Int )
+        templateCursorPosition =
+            List.foldl
+                (\char ( ( c, r ), xs ) ->
+                    case char of
+                        '\n' ->
+                            ( ( 1, r + 1 ), ( 1, r + 1 ) :: xs )
+
+                        _ ->
+                            ( ( c + 1, r ), ( c + 1, r ) :: xs )
+                )
+                ( ( 0, 1 ), [] )
+                (String.toList (Node.value template))
+                |> Tuple.second
+                |> List.reverse
+                |> Array.fromList
+
+        placeholderWithoutValueErrors : List (Error {})
+        placeholderWithoutValueErrors =
+            List.map
+                (\{ startIndex, endIndex } ->
+                    let
+                        ( oc, or ) =
+                            ( (Node.range template).start.column
+                            , (Node.range template).start.row
+                            )
+
+                        ( sc, sr ) =
+                            Array.get startIndex templateCursorPosition
+                                |> Maybe.withDefault ( 0, 0 )
+
+                        ( ec, er ) =
+                            Array.get (endIndex - 1) templateCursorPosition
+                                |> Maybe.withDefault ( 0, 0 )
+
+                        start =
+                            if sr == 1 then
+                                Location or (oc + sc + 2)
+
+                            else
+                                Location (or + sr - 1) (sc - 1)
+
+                        end =
+                            if er == 1 then
+                                Location or (oc + ec + 3)
+
+                            else
+                                Location (or + er - 1) ec
+                    in
+                    placeholderWithoutValueError
+                        { start = start
+                        , end = end
+                        }
+                )
+                placeholdersWithoutValue
+
+        unusedKeyErrors : List (Error {})
+        unusedKeyErrors =
+            List.map
+                (\( _, range ) -> unusedKeyError range)
+                (Dict.toList unusedKeys)
     in
-    if List.length errors == 0 then
-        Ok dict
-
-    else
-        Err errors
+    placeholderWithoutValueErrors ++ unusedKeyErrors
 
 
-type State
-    = Normal Placeholders
-    | InPlaceholder Placeholders
+placeholdersInTemplate : String -> List { name : String, startIndex : Int, endIndex : Int }
+placeholdersInTemplate template =
+    let
+        regex : Regex
+        regex =
+            Regex.fromString "\\${[^}]*}"
+                |> Maybe.withDefault Regex.never
+    in
+    List.map
+        (\{ match, index } ->
+            { name = nameInPlaceholder match
+            , startIndex = index
+            , endIndex = index + String.length match
+            }
+        )
+        (Regex.find regex template)
+
+
+nameInPlaceholder : String -> String
+nameInPlaceholder placeholder =
+    placeholder
+        |> String.dropLeft 2
+        |> String.dropRight 1
+        |> String.toList
+        |> dropWhile ((==) ' ')
+        |> dropWhileRight ((==) ' ')
+        |> String.fromList
 
 
 type alias Placeholders =
     List { range : Range, name : String }
-
-
-parser : Range -> State -> Parser (Step State Placeholders)
-parser templateRange state =
-    case state of
-        Normal placeholders ->
-            Parser.oneOf
-                [ Parser.chompUntil "${"
-                    |> Parser.map (\_ -> Loop (InPlaceholder placeholders))
-                , Parser.succeed (Done placeholders)
-                ]
-
-        InPlaceholder placeholders ->
-            Parser.succeed
-                (\r1 c1 o1 r2 c2 o2 s ->
-                    let
-                        range =
-                            { start =
-                                Location
-                                    (r1 + templateRange.start.row - 1)
-                                    (c1 + templateRange.start.column)
-                            , end =
-                                Location
-                                    (r2 + templateRange.start.row - 1)
-                                    (c2 + templateRange.start.column)
-                            }
-
-                        name =
-                            String.slice o1 (o2 + 1) s
-                                |> placeholderNameFromPlaceholder
-                    in
-                    Loop (Normal ({ range = range, name = name } :: placeholders))
-                )
-                |= Parser.getRow
-                |= Parser.getCol
-                |= Parser.getOffset
-                |. Parser.chompUntil "}"
-                |= Parser.getRow
-                |= Parser.getCol
-                |= Parser.getOffset
-                |= Parser.getSource
-
-
-failedToParseTemplateError : List Parser.DeadEnd -> Error {}
-failedToParseTemplateError deadEnds =
-    Rule.error
-        { message = "Internal error"
-        , details = [ "Hmmm... This is probably a bug, if you could just copy this error message and send it to @emmabastas in slack or github that would be highly appreciated! :)", Parser.deadEndsToString deadEnds ]
-        }
-        (case deadEnds of
-            [] ->
-                { start = Location 0 0
-                , end = Location 0 1
-                }
-
-            { row, col } :: _ ->
-                { start = Location row col
-                , end = Location row (col + 1)
-                }
-        )
 
 
 duplicateKeysError : Range -> Error {}
