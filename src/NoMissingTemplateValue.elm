@@ -71,7 +71,7 @@ expressionVisitor node context =
 
         Just ( moduleName, name ) ->
             case Node.value node of
-                Expression.Application [ Node _ (Expression.FunctionOrValue mn n), Node _ (Expression.ListExpr exprs), Node templateRange (Expression.Literal template) ] ->
+                Expression.Application [ Node _ (Expression.FunctionOrValue mn n), Node _ (Expression.ListExpr exprs), Node literalRange (Expression.Literal template) ] ->
                     let
                         keys : List (Node String)
                         keys =
@@ -85,9 +85,22 @@ expressionVisitor node context =
                                             Nothing
                                 )
                                 exprs
+
+                        templateRange : Range
+                        templateRange =
+                            stringRangeInLiteral (Node literalRange template)
                     in
-                    if mn == moduleName && n == name && List.length exprs == List.length keys then
-                        ( checkForErrors (Node templateRange template) keys, context )
+                    if
+                        mn
+                            == moduleName
+                            && n
+                            == name
+                            && List.length exprs
+                            == List.length keys
+                    then
+                        ( checkForErrors (Node templateRange template) keys
+                        , context
+                        )
 
                     else
                         ( [], context )
@@ -173,14 +186,14 @@ veryifyTemplate dict template =
 
                         start =
                             if sr == 1 then
-                                Location or (oc + sc + 2)
+                                Location or (oc + sc - 1)
 
                             else
                                 Location (or + sr - 1) (sc - 1)
 
                         end =
                             if er == 1 then
-                                Location or (oc + ec + 3)
+                                Location or (oc + ec)
 
                             else
                                 Location (or + er - 1) ec
@@ -230,8 +243,74 @@ nameInPlaceholder placeholder =
         |> String.fromList
 
 
-type alias Placeholders =
-    List { range : Range, name : String }
+stringRangeInLiteral : Node String -> Range
+stringRangeInLiteral (Node range string) =
+    if range.start.row == range.end.row then
+        let
+            literalLength =
+                range.end.column - range.start.column
+
+            stringLength =
+                String.length string
+
+            delta =
+                literalLength - stringLength
+        in
+        { start =
+            { row = range.start.row
+            , column = range.start.column + (delta // 2)
+            }
+        , end =
+            { row = range.end.row
+            , column = range.end.column - (delta // 2)
+            }
+        }
+
+    else
+        Debug.todo "Handle multiline strings"
+
+
+rangeFromString : String -> Range
+rangeFromString string =
+    let
+        lines =
+            String.lines string
+
+        lastLine =
+            List.head (List.reverse lines)
+                |> Maybe.withDefault ""
+    in
+    { start =
+        { row = 1
+        , column = 1
+        }
+    , end =
+        { row = List.length lines
+        , column = String.length lastLine + 1
+        }
+    }
+
+
+offsetRange : Location -> Range -> Range
+offsetRange { row, column } { start, end } =
+    { start =
+        { row = row + start.row - 1
+        , column = column + start.column - 1
+        }
+    , end =
+        { row = row + end.row - 1
+        , column =
+            if end.row == 1 then
+                column + end.column - 1
+
+            else
+                end.column
+        }
+    }
+
+
+
+-- Review errors
 
 
 duplicateKeysError : Range -> Error {}
@@ -256,21 +335,6 @@ placeholderWithoutValueError =
         { message = "Placeholder has no value"
         , details = [ "This placeholder has no value associated, i.e. there's no key with the same name as the placeholder. Maybe you meant to asign it a value but misspelled the key or placeholder name?" ]
         }
-
-
-
--- helpers
-
-
-placeholderNameFromPlaceholder : String -> String
-placeholderNameFromPlaceholder placeholder =
-    placeholder
-        |> String.dropLeft 2
-        |> String.dropRight 1
-        |> String.toList
-        |> dropWhile ((==) ' ')
-        |> dropWhileRight ((==) ' ')
-        |> String.fromList
 
 
 
