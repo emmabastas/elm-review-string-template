@@ -144,7 +144,12 @@ bar = String.Template.inject """ ++ toInjectStr ++ "\"\"\"" ++ template ++ "\"\"
             \_ ->
                 ("""module Foo exposing (bar)
 import String.Template
-bar = String.Template.inject """ ++ toInjectStr ++ "\"" ++ template ++ "\"")
+bar = String.Template.inject """
+                    ++ toInjectStr
+                    ++ "\""
+                    ++ String.replace "\n" "\\n" template
+                    ++ "\""
+                )
                     |> Review.Test.run rule
                     |> expect
 
