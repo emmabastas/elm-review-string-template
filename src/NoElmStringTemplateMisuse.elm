@@ -313,10 +313,6 @@ nameInPlaceholder placeholder =
     placeholder
         |> String.dropLeft 2
         |> String.dropRight 1
-        |> String.toList
-        |> dropWhile ((==) ' ')
-        |> dropWhileRight ((==) ' ')
-        |> String.fromList
 
 
 stringRangeInLiteral : Node String -> Range
@@ -431,34 +427,3 @@ placeholderWithoutValueError =
         { message = "Placeholder has no value"
         , details = [ "This placeholder has no value associated, i.e. there's no key with the same name as the placeholder. Maybe you meant to asign it a value but misspelled the key or placeholder name?" ]
         }
-
-
-
--- dropwWhile and dropWhileRight taken from elm-community/list-extra
-
-
-dropWhile : (a -> Bool) -> List a -> List a
-dropWhile predicate list =
-    case list of
-        [] ->
-            []
-
-        x :: xs ->
-            if predicate x then
-                dropWhile predicate xs
-
-            else
-                list
-
-
-dropWhileRight : (a -> Bool) -> List a -> List a
-dropWhileRight p =
-    List.foldr
-        (\x xs ->
-            if p x && List.isEmpty xs then
-                []
-
-            else
-                x :: xs
-        )
-        []
