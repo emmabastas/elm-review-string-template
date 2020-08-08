@@ -1,4 +1,10 @@
-module NoMissingTemplateValue exposing (rule)
+module NoBadTemplateInject exposing (rule)
+
+{-|
+
+@docs rule
+
+-}
 
 import Array exposing (Array)
 import Dict exposing (Dict)
@@ -11,21 +17,46 @@ import Regex exposing (Regex)
 import Review.Rule as Rule exposing (Error, Rule)
 
 
-type alias Context =
-    { injectQualified : Maybe ( List String, String )
-    , injectUnqualified : Bool
-    }
+{-| Reports... REPLACEME
+
+    config =
+        [ NoBadTemplateInject.rule
+        ]
 
 
+## Fail
+
+    a =
+        "REPLACEME example to replace"
+
+
+## Success
+
+    a =
+        "REPLACEME example to replace"
+
+
+## When (not) to enable this rule
+
+This rule is useful when REPLACEME.
+THis rule is not useful when REPLACEME.
+
+-}
 rule : Rule
 rule =
-    Rule.newModuleRuleSchema "NoMissingTemplateValue"
+    Rule.newModuleRuleSchema "NoBadTemplateInject"
         { injectQualified = Nothing
         , injectUnqualified = False
         }
         |> Rule.withImportVisitor importVisitor
         |> Rule.withExpressionEnterVisitor expressionVisitor
         |> Rule.fromModuleRuleSchema
+
+
+type alias Context =
+    { injectQualified : Maybe ( List String, String )
+    , injectUnqualified : Bool
+    }
 
 
 importVisitor : Node Import -> Context -> ( List (Error {}), Context )
@@ -220,11 +251,6 @@ veryifyTemplate dict template =
             List.map
                 (\{ startIndex, endIndex } ->
                     let
-                        ( oc, or ) =
-                            ( (Node.range template).start.column
-                            , (Node.range template).start.row
-                            )
-
                         ( sc, sr ) =
                             Array.get startIndex templateCursorPosition
                                 |> Maybe.withDefault ( 0, 0 )

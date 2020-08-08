@@ -1,8 +1,8 @@
-module NoMissingTemplateValueTest exposing (all)
+module NoBadTemplateInjectTest exposing (all)
 
 import Elm.Syntax.Range exposing (Location, Range)
 import Expect exposing (Expectation)
-import NoMissingTemplateValue exposing (rule)
+import NoBadTemplateInject exposing (rule)
 import Review.Test exposing (ExpectedError, ReviewResult)
 import Test exposing (Test, concat, describe, test)
 
