@@ -1,4 +1,4 @@
-# elm-review-string-template
+# elm-review-string-template [![Build Status](https://travis-ci.org/emmabastas/elm-review-string-template.svg?branch=master)](https://travis-ci.org/emmabastas/elm-review-string-template)
 
 Provides [`elm-review`](https://package.elm-lang.org/packages/jfmengels/elm-review/latest/) rules to REPLACEME.
 
