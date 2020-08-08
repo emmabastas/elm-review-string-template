@@ -2,6 +2,7 @@ module NoElmStringTemplateMisuseTest exposing (all)
 
 import Elm.Syntax.Range exposing (Range)
 import Expect exposing (Expectation)
+import Fuzz exposing (Fuzzer)
 import NoElmStringTemplateMisuse exposing (rule)
 import Review.Test exposing (ExpectedError, ReviewResult)
 import Test exposing (Test, concat, describe, test)
@@ -10,11 +11,7 @@ import Test exposing (Test, concat, describe, test)
 all : Test
 all =
     concat
-        [ identifiesPlaceholderSyntax
-        , namePaddingIsIgnored
-        , spacesInNamesIsNotIgnored
-        , multiplePlaceholdersAndValues
-        , reportsErrors
+        [ validStringTemplateUseUnitTests
         ]
 
 
@@ -41,31 +38,13 @@ validStringTemplateUseUnitTests =
            }
          ]
             |> List.map
-                (\{ template, toInject, expect } ->
-                    test
+                (\{ template, toInject } ->
+                    unitTest template
                         template
-                        (\_ ->
-                            inject toInject template
-                                |> Expect.equal expect
-                        )
+                        toInject
+                        Review.Test.expectNoErrors
                 )
         )
-
-
-passes : String -> List ( String, String ) -> Test
-passes template toInject =
-    unitTest template
-        template
-        toInject
-        Review.Test.expectNoErrors
-
-
-fails : String -> List ( String, String ) -> List ExpectedError -> Test
-fails template toInject errors =
-    unitTest template
-        template
-        toInject
-        (Review.Test.expectErrors errors)
 
 
 unitTest : String -> String -> List ( String, String ) -> (ReviewResult -> Expectation) -> Test
@@ -137,6 +116,10 @@ bar = String.Template.inject """ ++ toInjectStr ++ " <| \"\"\"" ++ template ++ "
         ]
 
 
+
+-- Error helpers
+
+
 duplicateKeysError : String -> Range -> ExpectedError
 duplicateKeysError under range =
     Review.Test.error
@@ -163,3 +146,47 @@ placeholderWithoutValueError under =
         , details = [ "This placeholder has no value associated, i.e. there's no key with the same name as the placeholder. Maybe you meant to asign it a value but misspelled the key or placeholder name?" ]
         , under = under
         }
+
+
+
+-- Fuzzers
+
+
+placeholderSuroundedByTextFuzzer :
+    Fuzzer
+        { placeholder : String
+        , name : String
+        , leadingText : String
+        , trailingText : String
+        }
+placeholderSuroundedByTextFuzzer =
+    Fuzz.map3
+        (\{ placeholder, name } leadingText trailingText ->
+            { placeholder = placeholder
+            , name = name
+            , leadingText = leadingText
+            , trailingText = trailingText
+            }
+        )
+        placeholderFuzzer
+        textFuzzer
+        textFuzzer
+
+
+placeholderFuzzer : Fuzzer { placeholder : String, name : String }
+placeholderFuzzer =
+    Fuzz.map
+        (\name -> { placeholder = "${" ++ name ++ "}", name = name })
+        placeholderNameFuzzer
+
+
+placeholderNameFuzzer : Fuzzer String
+placeholderNameFuzzer =
+    Fuzz.string
+        |> Fuzz.map (String.replace "}" "")
+
+
+textFuzzer : Fuzzer String
+textFuzzer =
+    Fuzz.string
+        |> Fuzz.map (String.replace "${" "")
