@@ -49,7 +49,7 @@ rule =
         , injectUnqualified = False
         }
         |> Rule.withImportVisitor importVisitor
-        |> Rule.withExpressionEnterVisitor expressionVisitor
+        |> Rule.withExpressionVisitor expressionVisitor
         |> Rule.fromModuleRuleSchema
 
 
@@ -102,9 +102,13 @@ importVisitor (Node _ import_) context =
             ( [], context )
 
 
-expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
-expressionVisitor (Node _ expr) context =
-    case extractTemplateInjectApplication context expr of
+expressionVisitor :
+    Node Expression
+    -> Rule.Direction
+    -> Context
+    -> ( List (Error {}), Context )
+expressionVisitor (Node _ expr) direction context =
+    case extractTemplateInjectApplication direction context expr of
         Just ( Node _ (ListExpr keyExprs), Node literalRange (Literal template) ) ->
             let
                 keys : List (Node String)
@@ -136,13 +140,20 @@ expressionVisitor (Node _ expr) context =
             ( [], context )
 
 
-extractTemplateInjectApplication : Context -> Expression -> Maybe ( Node Expression, Node Expression )
-extractTemplateInjectApplication context expr =
-    case ( context.injectQualified, context.injectUnqualified ) of
-        ( Nothing, False ) ->
+extractTemplateInjectApplication :
+    Rule.Direction
+    -> Context
+    -> Expression
+    -> Maybe ( Node Expression, Node Expression )
+extractTemplateInjectApplication direction context expr =
+    case ( direction, context.injectQualified, context.injectUnqualified ) of
+        ( Rule.OnExit, _, _ ) ->
             Nothing
 
-        _ ->
+        ( Rule.OnEnter, Nothing, False ) ->
+            Nothing
+
+        ( Rule.OnEnter, _, _ ) ->
             case expr of
                 Application [ Node _ (FunctionOrValue mn n), e1, e2 ] ->
                     if isStringTemplateInject context mn n then
