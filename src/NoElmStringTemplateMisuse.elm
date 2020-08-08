@@ -1,4 +1,4 @@
-module NoBadTemplateInject exposing (rule)
+module NoElmStringTemplateMisuse exposing (rule)
 
 {-|
 
@@ -20,7 +20,7 @@ import Review.Rule as Rule exposing (Error, Rule)
 {-| Reports... REPLACEME
 
     config =
-        [ NoBadTemplateInject.rule
+        [ NoElmStringTemplateMisuse.rule
         ]
 
 
@@ -44,7 +44,7 @@ THis rule is not useful when REPLACEME.
 -}
 rule : Rule
 rule =
-    Rule.newModuleRuleSchema "NoBadTemplateInject"
+    Rule.newModuleRuleSchema "NoElmStringTemplateMisuse"
         { injectQualified = Nothing
         , injectUnqualified = False
         }

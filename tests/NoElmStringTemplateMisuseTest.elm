@@ -1,8 +1,8 @@
-module NoBadTemplateInjectTest exposing (all)
+module NoElmStringTemplateMisuseTest exposing (all)
 
-import Elm.Syntax.Range exposing (Location, Range)
+import Elm.Syntax.Range exposing (Range)
 import Expect exposing (Expectation)
-import NoBadTemplateInject exposing (rule)
+import NoElmStringTemplateMisuse exposing (rule)
 import Review.Test exposing (ExpectedError, ReviewResult)
 import Test exposing (Test, concat, describe, test)
 
@@ -18,92 +18,38 @@ all =
         ]
 
 
-identifiesPlaceholderSyntax : Test
-identifiesPlaceholderSyntax =
-    describe "Identifies placeholder syntax"
-        [ passes "foo" []
-        , passes "${}" [ ( "", "" ) ]
-        , passes "${${}" [ ( "${", "" ) ]
-        ]
-
-
-namePaddingIsIgnored : Test
-namePaddingIsIgnored =
-    describe "Name padding is ignored"
-        [ passes "${foo}" [ ( "foo", "bar" ) ]
-        , passes "${ foo}" [ ( "foo", "bar" ) ]
-        , passes "${foo }" [ ( "foo", "bar" ) ]
-        , passes "${   foo   }" [ ( "foo", "bar" ) ]
-        ]
-
-
-spacesInNamesIsNotIgnored : Test
-spacesInNamesIsNotIgnored =
-    describe "Spaces in Names is not ignored"
-        [ passes "${foo}" [ ( "foo", "bar" ) ]
-        , fails "${f oo}"
-            [ ( "foo", "bar" ) ]
-            [ placeholderWithoutValueError "${f oo}"
-            , unusedKeyError "\"foo\""
-            ]
-        , passes "${b ar}" [ ( "b ar", "bar" ) ]
-        , fails "${b az}"
-            [ ( "baz", "foo" ) ]
-            [ placeholderWithoutValueError "${b az}"
-            , unusedKeyError "\"baz\""
-            ]
-        ]
-
-
-multiplePlaceholdersAndValues : Test
-multiplePlaceholdersAndValues =
-    describe "Multiple placeholders and values"
-        [ passes "${}{}" [ ( "", "foo" ) ]
-        , passes "${x} ${y} ${x}" [ ( "x", "foo" ), ( "y", "bar" ) ]
-        , fails "${x} ${y}"
-            [ ( "x", "foo" ) ]
-            [ placeholderWithoutValueError "${y}" ]
-        , fails "${x}"
-            [ ( "x", "foo" ), ( "y", "bar" ) ]
-            [ unusedKeyError "\"y\"" ]
-        ]
-
-
-reportsErrors : Test
-reportsErrors =
-    describe "Reports errors"
-        [ describe "Placeholders without values"
-            [ fails "${x}" [] [ placeholderWithoutValueError "${x}" ]
-            , fails "${x}${y}${z}"
-                []
-                [ placeholderWithoutValueError "${x}"
-                , placeholderWithoutValueError "${y}"
-                , placeholderWithoutValueError "${z}"
-                ]
-            , fails "${x}\n${y}"
-                []
-                [ placeholderWithoutValueError "${x}"
-                , placeholderWithoutValueError "${y}"
-                ]
-            ]
-        , describe "Unused keys"
-            [ fails "foo" [ ( "x", "y" ) ] [ unusedKeyError "\"x\"" ]
-            ]
-
-        -- , describe "Duplicate keys"
-        --     [ fails "${x}"
-        --         [ ( "x", "y" ), ( "x", "z" ), ( "x", "w" ) ]
-        --         [ duplicateKeysError "\"x\""
-        --             { start = Location 3 48
-        --             , end = Location 3 51
-        --             }
-        --         , duplicateKeysError "\"x\""
-        --             { start = Location 3 62
-        --             , end = Location 3 65
-        --             }
-        --         ]
-        --     ]
-        ]
+validStringTemplateUseUnitTests : Test
+validStringTemplateUseUnitTests =
+    describe "Valid String.Template use"
+        ([ { template = "${}"
+           , toInject = [ ( "", "x" ) ]
+           }
+         , { template = "${foo}"
+           , toInject = [ ( "foo", "bar" ) ]
+           }
+         , { template = "${ foo }"
+           , toInject = [ ( " foo ", "bar" ) ]
+           }
+         , { template = "${${}"
+           , toInject = [ ( "${", "foo" ) ]
+           }
+         , { template = "$${foo}}"
+           , toInject = [ ( "foo", "bar" ) ]
+           }
+         , { template = "${identity}"
+           , toInject = [ ( "identity", "${identity}" ) ]
+           }
+         ]
+            |> List.map
+                (\{ template, toInject, expect } ->
+                    test
+                        template
+                        (\_ ->
+                            inject toInject template
+                                |> Expect.equal expect
+                        )
+                )
+        )
 
 
 passes : String -> List ( String, String ) -> Test

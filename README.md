@@ -5,7 +5,7 @@ Provides [`elm-review`](https://package.elm-lang.org/packages/jfmengels/elm-revi
 
 ## Provided rules
 
-- [`NoBadTemplateInject`](https://package.elm-lang.org/packages/emmabastas/elm-review-string-template/1.0.0/NoBadTemplateInject) - Reports REPLACEME.
+- [`NoElmStringTemplateMisuse`](https://package.elm-lang.org/packages/emmabastas/elm-review-string-template/1.0.0/NoElmStringTemplateMisuse) - Reports REPLACEME.
 
 
 ## Configuration
