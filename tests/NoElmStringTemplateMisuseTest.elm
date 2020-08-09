@@ -37,6 +37,9 @@ validStringTemplateUseUnitTests =
          , { template = "${identity}"
            , toInject = [ ( "identity", "${identity}" ) ]
            }
+         , { template = "${\\\\}"
+           , toInject = [ ( "\\\\", "" ) ]
+           }
          ]
             |> List.map
                 (\{ template, toInject } ->
