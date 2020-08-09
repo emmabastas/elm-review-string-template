@@ -5,13 +5,14 @@ import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
 import NoElmStringTemplateMisuse exposing (rule)
 import Review.Test exposing (ExpectedError, ReviewResult)
-import Test exposing (Test, concat, describe, test)
+import Test exposing (Test, concat, describe, fuzz, test)
 
 
 all : Test
 all =
     concat
         [ validStringTemplateUseUnitTests
+        , validStringTemplateUseFuzzTest
         ]
 
 
@@ -45,6 +46,84 @@ validStringTemplateUseUnitTests =
                         Review.Test.expectNoErrors
                 )
         )
+
+
+validStringTemplateUseFuzzTest : Test
+validStringTemplateUseFuzzTest =
+    let
+        fuzzer :
+            Fuzzer
+                (List
+                    { placeholder : String
+                    , name : String
+                    , leadingText : String
+                    , trailingText : String
+                    }
+                )
+        fuzzer =
+            Fuzz.list placeholderSuroundedByTextFuzzer
+                |> Fuzz.map
+                    (List.map
+                        (\e -> { e | leadingText = "_" ++ e.leadingText })
+                    )
+    in
+    fuzz fuzzer "Valid String.Template use fuzz test" <|
+        \segments ->
+            let
+                segmentsPrefixed :
+                    List
+                        { name : String
+                        , leadingText : String
+                        , trailingText : String
+                        }
+                segmentsPrefixed =
+                    List.indexedMap
+                        (\i { name, leadingText, trailingText } ->
+                            { name =
+                                String.padLeft
+                                    (List.length segments // 10 + 1)
+                                    '0'
+                                    (String.fromInt i)
+                                    ++ name
+                                    |> String.replace "\"" ""
+                                    |> String.replace "\\" "\\\\"
+                            , leadingText =
+                                leadingText
+                                    |> String.replace "\"" ""
+                                    |> String.replace "\\" "\\\\"
+                            , trailingText =
+                                trailingText
+                                    |> String.replace "\"" ""
+                                    |> String.replace "\\" "\\\\"
+                            }
+                        )
+                        segments
+
+                template : String
+                template =
+                    List.map
+                        (\{ name, leadingText, trailingText } ->
+                            leadingText ++ "${" ++ name ++ "}" ++ trailingText
+                        )
+                        segmentsPrefixed
+                        |> String.concat
+                        |> String.replace "\"\"\"" " "
+
+                toInject : String
+                toInject =
+                    "[ "
+                        ++ (List.map
+                                (\{ name } -> "( \"" ++ name ++ "\", \"\")")
+                                segmentsPrefixed
+                                |> String.join ", "
+                           )
+                        ++ " ]"
+            in
+            ("""module Foo exposing (bar)
+import String.Template
+bar = String.Template.inject """ ++ toInject ++ "\"\"\"" ++ template ++ "\"\"\"")
+                |> Review.Test.run rule
+                |> Review.Test.expectNoErrors
 
 
 unitTest : String -> String -> List ( String, String ) -> (ReviewResult -> Expectation) -> Test
